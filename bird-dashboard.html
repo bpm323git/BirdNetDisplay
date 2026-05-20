@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- These two let the page run fullscreen when "Added to Home Screen" on the iPad -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>The Garden Register</title>
+
+<!-- ============================================================= -->
+<!-- ===================  S E T T I N G S  ======================== -->
+<!-- ============================================================= -->
+<!-- This is the ONLY part you need to touch.                        -->
+<!-- Edit the values inside the quotes, then save the file.          -->
+<script>
+const CONFIG = {
+
+  // Your BirdNET-Go web address, exactly as you type it into a browser
+  // to see BirdNET-Go itself. Include http:// and the port.
+  // Example:  "http://192.168.1.50:8080"
+  // LEAVE IT BLANK ("")  to just run the pretty demo with sample birds.
+  BIRDNET_GO_URL: "",
+
+  // The name shown in the top corner. Make it yours.
+  STATION_NAME: "The Garden Register",
+
+  // The small line under the title. Today's date is added after it
+  // automatically. Reword it however you like.
+  CONTEXT_LINE: "Birds heard here",
+
+  // How long each bird stays on screen, in seconds. 150 = 2.5 minutes.
+  ROTATE_SECONDS: 150,
+
+  // How often to ask BirdNET-Go for new detections, in seconds.
+  POLL_SECONDS: 180,
+
+  // A bird last heard within this many minutes is marked "Calling now";
+  // older than this, "Heard earlier". Tune to your yard's rhythm.
+  FRESH_MINUTES: 30,
+
+  // Night blackout — the screen goes fully black between these two times,
+  // every day. Accepts 12-hour ("9:45pm", "6:00am") or 24-hour ("21:45",
+  // "06:00"). To turn the blackout off, set BOTH to an empty string "".
+  BLACKOUT_START: "9:45pm",
+  BLACKOUT_END:   "6:00am"
+};
+</script>
+<!-- ============================================================= -->
+<!-- ============  nothing below here needs editing  ============== -->
+<!-- ============================================================= -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --paper:#f1e7d2;
+  --paper-deep:#e8dabc;
+  --ink:#2a2317;
+  --ink-soft:#6a5f48;
+  --sage:#6c7b58;
+  --sage-deep:#41502f;
+  --ochre:#b9763c;
+  --vermillion:#9e3b27;
+  --gold:#c6a35a;
+  --line:#cdbd97;
+}
+
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:"Newsreader",Georgia,serif;
+  overflow:hidden;
+  user-select:none;
+  -webkit-user-select:none;
+}
+
+/* paper grain + soft vignette behind everything */
+.texture{
+  position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/></svg>");
+  mix-blend-mode:multiply;
+}
+.vignette{
+  position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(130% 120% at 50% 38%, rgba(0,0,0,0) 52%, rgba(60,46,20,0.16) 100%);
+}
+
+/* ---------- masthead ---------- */
+.masthead{
+  position:fixed;top:0;left:0;right:0;z-index:5;
+  display:flex;justify-content:space-between;align-items:flex-start;
+  padding:calc(env(safe-area-inset-top,0px) + clamp(20px,3vh,40px))
+          clamp(30px,3.8vw,62px)
+          clamp(14px,2vh,22px);
+}
+.brand{display:flex;align-items:flex-start;gap:13px;}
+.brand svg{width:26px;height:26px;opacity:.85;margin-top:2px;flex:none;}
+.brand .titles{display:flex;flex-direction:column;gap:2px;}
+.brand .name{
+  font-family:"Fraunces",serif;font-style:italic;font-weight:500;
+  font-size:clamp(18px,2.5vh,26px);letter-spacing:.005em;color:var(--ink);
+  line-height:1;
+}
+.brand .context{
+  font-family:"Caveat",cursive;
+  font-size:clamp(15px,2.05vh,20px);letter-spacing:.015em;
+  color:var(--ink-soft);line-height:1;
+}
+.status{
+  display:flex;align-items:center;gap:9px;margin-top:3px;
+  font-size:clamp(10.5px,1.5vh,13px);letter-spacing:.17em;text-transform:uppercase;
+  color:var(--sage-deep);
+}
+.dot{
+  width:8px;height:8px;border-radius:50%;background:var(--gold);
+  box-shadow:0 0 0 0 rgba(0,0,0,0);
+}
+.dot.live{background:var(--sage);animation:pulse 3.4s ease-in-out infinite;}
+.dot.demo{background:var(--ochre);}
+.dot.off{background:#b04a36;}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(108,123,88,.5);}50%{box-shadow:0 0 0 7px rgba(108,123,88,0);}}
+
+/* ---------- stage ---------- */
+.stage{
+  position:relative;z-index:2;height:100vh;
+  display:flex;align-items:center;justify-content:center;
+  gap:clamp(32px,4.2vw,68px);
+  padding:calc(env(safe-area-inset-top,0px) + clamp(78px,11vh,124px))
+          clamp(28px,3.2vw,52px) clamp(34px,5vh,58px);
+  opacity:0;transform:translateY(14px);
+  transition:opacity .7s ease,transform .7s ease;
+}
+.stage.show{opacity:1;transform:none;}
+
+/* ---------- the plate (image) ---------- */
+.frame{
+  position:relative;flex:0 0 40%;max-width:40%;
+  height:100%;max-height:68vh;
+  padding:13px;background:var(--paper-deep);
+  border:1.5px solid var(--ink);
+  border-radius:47% 47% 7% 7% / 37% 37% 6% 6%;
+  box-shadow:0 26px 46px -22px rgba(40,30,12,.55),
+             0 3px 0 0 rgba(40,30,12,.12);
+}
+.frame::after{
+  content:"";position:absolute;inset:6px;
+  border:1px solid var(--ink);opacity:.32;
+  border-radius:45% 45% 5% 5% / 35% 35% 5% 5%;
+  pointer-events:none;
+}
+.frame .img-wrap{
+  position:relative;width:100%;height:100%;overflow:hidden;
+  border-radius:44% 44% 5% 5% / 34% 34% 5% 5%;
+  background:var(--paper);
+}
+.frame img{
+  width:100%;height:100%;display:block;
+  object-fit:cover;
+  /* crop from high in the frame — birds' heads sit in the upper portion
+     of most photos, so a center crop is what clipped the waxwing's crest */
+  object-position:50% 22%;
+  /* grow from the top during the drift, so the scale never pushes the
+     head down out of view */
+  transform-origin:50% 18%;
+  animation:drift 168s linear forwards;
+}
+/* gentle Ken Burns — a smaller scale range keeps the crop from wandering
+   far enough to clip a tightly-framed subject */
+@keyframes drift{from{transform:scale(1.01);}to{transform:scale(1.05);}}
+
+/* placeholder feather when no photo is found */
+.no-photo{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:14px;color:var(--line);
+}
+.no-photo svg{width:74px;height:74px;}
+.no-photo span{font-style:italic;font-size:14px;color:var(--ink-soft);}
+
+/* typographic marker — flags a notable bird (annual / seasonal first) */
+.firstmark{
+  display:none;
+  margin-bottom:clamp(8px,1.4vh,16px);
+  line-height:.92;
+}
+.firstmark .lead{
+  display:block;
+  font-family:"Fraunces",serif;font-style:italic;font-weight:500;
+  font-size:clamp(26px,4.2vh,46px);color:var(--ochre);
+  letter-spacing:-.005em;
+  font-variation-settings:"opsz" 60,"SOFT" 40;
+}
+.firstmark .sub{
+  display:block;margin-top:clamp(2px,.5vh,5px);
+  font-family:"Caveat",cursive;
+  font-size:clamp(17px,2.5vh,23px);letter-spacing:.02em;
+  color:var(--ink-soft);
+}
+
+/* ---------- the entry (text) ---------- */
+.entry{
+  flex:0 1 52%;min-width:0;
+  display:flex;flex-direction:column;justify-content:center;
+  gap:clamp(2px,.4vh,6px);
+}
+.entry > *{
+  opacity:0;transform:translateY(10px);
+  transition:opacity .6s ease,transform .6s ease;
+}
+.stage.show .entry > *{opacity:1;transform:none;}
+.stage.show .entry > *:nth-child(1){transition-delay:.10s;}  /* mark    */
+.stage.show .entry > *:nth-child(2){transition-delay:.10s;}  /* eyebrow */
+.stage.show .entry > *:nth-child(3){transition-delay:.20s;}
+.stage.show .entry > *:nth-child(4){transition-delay:.30s;}
+.stage.show .entry > *:nth-child(5){transition-delay:.40s;}
+.stage.show .entry > *:nth-child(6){transition-delay:.48s;}
+.stage.show .entry > *:nth-child(7){transition-delay:.56s;}
+.stage.show .entry > *:nth-child(8){transition-delay:.64s;}
+.stage.show .entry > *:nth-child(9){transition-delay:.71s;}
+.stage.show .entry > *:nth-child(10){transition-delay:.78s;}
+
+/* eyebrow status line — defaults to the quiet "earlier today" look;
+   the .fresh modifier lifts it to the sage accent for "calling now" */
+.eyebrow{
+  display:flex;align-items:center;gap:10px;
+  font-size:clamp(11px,1.5vh,13.5px);letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink-soft);margin-bottom:clamp(10px,1.6vh,18px);
+}
+.eyebrow.fresh{color:var(--sage-deep);}
+.eyebrow .tick{
+  width:30px;height:5px;opacity:.55;
+  background-repeat:no-repeat;background-size:100% 100%;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='30' height='5' viewBox='0 0 30 5' preserveAspectRatio='none'><path d='M1,3 C8,1.6 15,3.8 22,2.4 C25,1.9 28,3 29,2.6' fill='none' stroke='%236a5f48' stroke-width='1.4' stroke-linecap='round'/></svg>");
+}
+.eyebrow.fresh .tick{
+  opacity:.9;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='30' height='5' viewBox='0 0 30 5' preserveAspectRatio='none'><path d='M1,3 C8,1.6 15,3.8 22,2.4 C25,1.9 28,3 29,2.6' fill='none' stroke='%2341502f' stroke-width='1.6' stroke-linecap='round'/></svg>");
+}
+
+.name{
+  font-family:"Fraunces",serif;font-weight:600;
+  font-size:clamp(40px,7.4vw,98px);line-height:1.0;
+  letter-spacing:-.012em;color:var(--ink);
+  font-variation-settings:"opsz" 120,"SOFT" 30;
+}
+.binomial{
+  font-style:italic;font-size:clamp(18px,2.7vh,27px);
+  color:var(--ochre);margin-top:clamp(6px,1vh,12px);
+}
+.tagline{
+  font-size:clamp(13px,1.8vh,17px);color:var(--ink-soft);
+  font-style:italic;margin-top:3px;letter-spacing:.01em;
+}
+/* hand-inked divider — a slightly wavering line, not a ruler-straight border */
+.rule{
+  height:7px;border:0;width:92%;
+  margin:clamp(14px,2.4vh,26px) 0;
+  background-repeat:no-repeat;background-size:100% 100%;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='7' viewBox='0 0 600 7' preserveAspectRatio='none'><path d='M1,4 C70,2.3 140,5.2 210,3.6 C290,1.8 360,5.5 440,3.7 C500,2.5 560,4.6 599,3.3' fill='none' stroke='%23b89a5e' stroke-width='1.5' stroke-linecap='round'/></svg>");
+}
+
+/* page one's "today" group — count and activity graph as one unit on a
+   shared grid: a row of aligned labels, then number and chart hanging
+   top-aligned beneath them, then the "heard at" places as a quiet footer */
+.today{
+  margin-top:clamp(22px,3.6vh,40px);
+  display:flex;flex-direction:column;
+  gap:clamp(7px,1.1vh,12px);
+}
+.today .row{
+  display:flex;align-items:flex-start;     /* content hangs from one line */
+  gap:clamp(22px,3vw,46px);
+}
+.today .col-count{flex:none;}
+.today .col-graph{flex:0 1 auto;width:clamp(220px,26vw,360px);}
+
+/* the shared label row */
+.today .lbl{
+  font-size:clamp(10px,1.4vh,12px);letter-spacing:.15em;
+  text-transform:uppercase;color:var(--ink-soft);
+}
+
+/* the count — a modest headline figure, not a shout; nudged down so it
+   sits nearer the graph's baseline than its own label */
+.today .num{
+  font-family:"Fraunces",serif;font-weight:500;
+  font-size:clamp(32px,4.6vh,50px);color:var(--sage-deep);
+  line-height:.9;
+  margin-top:clamp(14px,2.4vh,30px);
+}
+.today .num small{font-size:.4em;color:var(--ink-soft);font-family:"Newsreader";font-style:italic;letter-spacing:0;}
+
+/* "heard at" — the places, a quiet handwritten footer to the group;
+   set apart from the graph above with a little breathing room */
+.today .places{
+  margin-top:clamp(12px,2.2vh,24px);
+  font-family:"Caveat",cursive;
+  font-size:clamp(17px,2.4vh,23px);color:var(--sage-deep);
+  line-height:1.2;
+}
+.today .places .pl{
+  font-family:"Fraunces",serif;font-style:italic;
+  font-size:.62em;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-soft);margin-right:9px;
+}
+
+/* the activity graph — deliberately subordinate to the bird name */
+.spark{width:100%;}
+.spark svg{display:block;width:100%;height:auto;overflow:visible;}
+.spark .sbar{
+  fill:rgba(108,123,88,.5);
+  stroke:var(--sage-deep);stroke-width:1.1;
+  stroke-linejoin:round;stroke-linecap:round;
+}
+.spark .sbar.peak{
+  fill:rgba(185,118,60,.5);
+  stroke:var(--ochre);
+}
+.spark .sbase{
+  fill:none;stroke:var(--ink-soft);stroke-width:1.3;
+  stroke-linecap:round;stroke-linejoin:round;opacity:.7;
+}
+.spark .mark{fill:var(--ink-soft);font-size:9px;letter-spacing:.04em;font-family:"Caveat",cursive;}
+@media (max-width:760px){ .today .row{flex-direction:column;} .today .col-graph{width:100%;} }
+
+/* detail-page stats — the finer figures moved off the glance page */
+.dstats{
+  display:flex;flex-wrap:wrap;gap:clamp(16px,2.4vh,28px) clamp(28px,3.6vw,52px);
+  margin-top:clamp(18px,2.8vh,30px);
+}
+.dstat{flex:none;}
+.dstat.wide{flex:1 1 100%;}
+.dstat .k{
+  font-size:clamp(9.5px,1.3vh,11px);letter-spacing:.15em;
+  text-transform:uppercase;color:var(--ink-soft);margin-bottom:5px;
+}
+.dstat .v{
+  font-family:"Fraunces",serif;font-weight:500;
+  font-size:clamp(19px,2.7vh,26px);color:var(--sage-deep);line-height:1;
+}
+.dstat.wide .v{
+  font-family:"Caveat",cursive;font-weight:600;
+  font-size:clamp(19px,2.7vh,26px);
+}
+.dstat .v small{font-size:.5em;color:var(--ink-soft);font-family:"Newsreader";font-style:italic;letter-spacing:0;}
+
+/* ---------- two-page slider ---------- */
+/* page one is the glance; page two is the lean-in detail (description,
+   and later a range map). Both sit side by side; .pages slides between. */
+.pages{
+  position:relative;z-index:2;
+  width:200vw;height:100vh;
+  display:flex;
+  transition:transform .62s cubic-bezier(.4,0,.2,1);
+}
+.pages.show-detail{transform:translateX(-100vw);}
+.page{width:100vw;height:100vh;flex:none;position:relative;}
+
+/* the "learn more" / back affordances — quiet, journal-voiced */
+.pageturn{
+  position:absolute;z-index:6;
+  bottom:clamp(20px,3.4vh,40px);
+  display:flex;align-items:center;gap:9px;
+  background:none;border:0;cursor:pointer;
+  font-family:"Caveat",cursive;
+  font-size:clamp(17px,2.3vh,23px);color:var(--ochre);
+  padding:6px 4px;
+}
+.pageturn .pen{
+  font-family:"Fraunces",serif;font-style:italic;
+  font-size:.8em;color:var(--ink-soft);
+}
+.pageturn.more{right:clamp(28px,3.4vw,56px);}
+.pageturn.back{left:clamp(28px,3.4vw,56px);}
+
+/* ---------- page two: the detail / reading page ---------- */
+.detail{
+  height:100vh;display:flex;align-items:center;justify-content:center;
+  gap:clamp(32px,4.6vw,76px);
+  padding:calc(env(safe-area-inset-top,0px) + clamp(70px,10vh,110px))
+          clamp(34px,5vw,84px) clamp(60px,8vh,96px);
+}
+.detail .dframe{
+  position:relative;flex:0 0 34%;max-width:34%;
+  height:100%;max-height:62vh;
+  padding:11px;background:var(--paper-deep);
+  border:1.5px solid var(--ink);
+  border-radius:8px;
+  box-shadow:0 22px 40px -20px rgba(40,30,12,.5);
+}
+.detail .dframe img{
+  width:100%;height:100%;object-fit:cover;display:block;
+  object-position:50% 22%;border-radius:4px;
+}
+.detail .dtext{flex:1 1 0;min-width:0;max-width:54%;}
+.detail .dname{
+  font-family:"Fraunces",serif;font-weight:600;
+  font-size:clamp(30px,4.6vh,52px);line-height:1.02;
+  letter-spacing:-.01em;color:var(--ink);
+}
+.detail .dsci{
+  font-style:italic;font-size:clamp(15px,2.1vh,21px);
+  color:var(--ochre);margin-top:5px;
+}
+.detail .ddesc{
+  font-size:clamp(15px,2.3vh,21px);line-height:1.62;
+  color:var(--ink);margin-top:clamp(16px,2.6vh,28px);
+  max-width:58ch;
+}
+/* range map on page two — Wikipedia's map, tinted toward the paper
+   palette so its varied colours don't clash with the journal aesthetic */
+.detail .dmap{
+  margin:clamp(18px,3vh,32px) 0 0;
+}
+.detail .dmap-cap{
+  font-size:clamp(9.5px,1.3vh,11px);letter-spacing:.15em;
+  text-transform:uppercase;color:var(--ink-soft);margin-bottom:10px;
+}
+.detail .dmap img{
+  display:block;max-width:min(420px,100%);max-height:34vh;
+  width:auto;height:auto;
+  border:1px solid var(--line);
+  background:var(--paper);padding:6px;
+  /* the tint: warm it, soften it, ease it toward the page */
+  filter:sepia(.36) saturate(.82) brightness(1.03) contrast(.96);
+  opacity:.93;
+}
+
+/* quiet / empty state */
+.quiet{
+  z-index:2;position:relative;height:100vh;
+  display:none;flex-direction:column;align-items:center;justify-content:center;
+  gap:18px;text-align:center;padding:40px;
+}
+.quiet.on{display:flex;}
+.quiet svg{width:60px;height:60px;opacity:.5;animation:bob 5s ease-in-out infinite;}
+.quiet .h{font-family:"Fraunces",serif;font-size:clamp(24px,4vh,38px);font-weight:500;}
+.quiet .p{font-style:italic;color:var(--ink-soft);font-size:clamp(14px,2vh,18px);}
+@keyframes bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-9px);}}
+
+/* loading */
+.boot{
+  position:fixed;inset:0;z-index:8;background:var(--paper);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  transition:opacity .8s ease;
+}
+.boot.gone{opacity:0;pointer-events:none;}
+.boot svg{width:46px;height:46px;opacity:.6;animation:bob 3.2s ease-in-out infinite;}
+.boot span{font-style:italic;color:var(--ink-soft);letter-spacing:.05em;font-size:15px;}
+
+/* night blackout — covers everything between the configured hours */
+.nightfall{
+  position:fixed;inset:0;z-index:9999;
+  background:#000;opacity:0;pointer-events:none;
+  transition:opacity 2.5s ease;
+}
+.nightfall.on{opacity:1;pointer-events:auto;}
+
+@media (max-width:760px){
+  .stage{flex-direction:column;gap:22px;padding-top:64px;}
+  .frame{flex-basis:auto;max-width:74vw;max-height:42vh;}
+  .entry{max-width:88vw;text-align:center;align-items:center;}
+  .rule{margin-left:auto;margin-right:auto;}
+  .stats{justify-content:center;}
+}
+</style>
+</head>
+<body>
+
+<div class="texture"></div>
+<div class="vignette"></div>
+
+<!-- hand-drawn line-art feather, reused a few places -->
+<svg style="display:none">
+  <symbol id="feather" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="1.3"
+       stroke-linecap="round" stroke-linejoin="round">
+      <!-- quill / rachis -->
+      <path d="M19.4 4.2 C16.5 8.5 12.8 13 9.4 16.3 C7.4 18.2 5.6 19.4 3.9 20.4"/>
+      <!-- vane outline -->
+      <path d="M19.4 4.2 C13.9 4.8 9.6 6.7 7.6 10.3 C6.2 12.8 6.0 15.6 6.6 18.0
+               C9.0 18.5 11.9 18.0 14.2 16.3 C17.6 13.8 19.6 9.6 19.4 4.2 Z"/>
+      <!-- a few barb strokes -->
+      <path d="M17.0 6.6 L11.4 9.2 M17.2 9.4 L10.0 12.4 M15.6 12.6 L9.0 15.2"
+            stroke-width="1"/>
+    </g>
+  </symbol>
+</svg>
+
+<div class="boot" id="boot">
+  <svg><use href="#feather"/></svg>
+  <span>Opening the register&hellip;</span>
+</div>
+
+<header class="masthead">
+  <div class="brand">
+    <svg><use href="#feather"/></svg>
+    <div class="titles">
+      <span class="name" id="brandName">The Garden Register</span>
+      <span class="context" id="contextLine"></span>
+    </div>
+  </div>
+  <div class="status">
+    <span class="dot demo" id="dot"></span>
+    <span id="statusText">Sample data</span>
+  </div>
+</header>
+
+<div class="pages" id="pages">
+
+  <!-- page one — the glance -->
+  <div class="page">
+    <main class="stage" id="stage">
+      <div class="frame" id="frame">
+        <div class="img-wrap" id="imgWrap">
+          <div class="no-photo" id="noPhoto" style="display:none">
+            <svg><use href="#feather"/></svg>
+            <span>no portrait on file</span>
+          </div>
+          <img id="birdImg" alt="" style="opacity:0">
+        </div>
+      </div>
+
+      <section class="entry">
+        <div class="firstmark" id="mark">
+          <span class="lead">First</span>
+          <span class="sub" id="markSub">record this year</span>
+        </div>
+        <div class="eyebrow" id="eyebrowRow"><span class="tick"></span><span id="eyebrow">Heard in the garden</span></div>
+        <h1 class="name" id="commonName">&mdash;</h1>
+        <div class="binomial" id="sciName"></div>
+        <div class="tagline" id="tagline"></div>
+        <div class="rule"></div>
+        <div class="today" id="today" style="display:none">
+          <div class="row">
+            <div class="col-count"><div class="lbl">Heard today</div></div>
+            <div class="col-graph"><div class="lbl" id="graphLbl">Today&rsquo;s activity</div></div>
+          </div>
+          <div class="row">
+            <div class="col-count"><div class="num" id="todayCount"></div></div>
+            <div class="col-graph">
+              <div class="spark" id="spark"><div id="sparkSvg"></div></div>
+            </div>
+          </div>
+          <div class="places" id="todayPlaces" style="display:none">
+            <span class="pl">Heard at</span><span id="todayPlaceNames"></span>
+          </div>
+        </div>
+      </section>
+    </main>
+    <button class="pageturn more" id="toDetail" type="button" style="display:none">
+      <span class="pen">&#9656;</span> learn more
+    </button>
+  </div>
+
+  <!-- page two — the lean-in detail -->
+  <div class="page">
+    <div class="detail">
+      <div class="dframe">
+        <img id="detailImg" alt="">
+      </div>
+      <div class="dtext">
+        <h2 class="dname" id="detailName"></h2>
+        <div class="dsci" id="detailSci"></div>
+        <p class="ddesc" id="detailDesc"></p>
+        <div class="dstats" id="detailStats"></div>
+        <figure class="dmap" id="detailMap" style="display:none">
+          <div class="dmap-cap">Where it ranges</div>
+          <img id="detailMapImg" alt="Range map">
+        </figure>
+      </div>
+    </div>
+    <button class="pageturn back" id="toGlance" type="button">
+      <span class="pen">&#9666;</span> back
+    </button>
+  </div>
+
+</div>
+
+<section class="quiet" id="quiet">
+  <svg><use href="#feather"/></svg>
+  <div class="h">The garden is quiet</div>
+  <div class="p">Listening for the first bird of the day&hellip;</div>
+</section>
+
+<div class="nightfall" id="nightfall"></div>
+<audio id="birdAudio" preload="none"></audio>
+
+<script>
+/* ------------------------------------------------------------------ */
+/*  Demo birds — shown only when BIRDNET_GO_URL is blank, or if the    */
+/*  live connection can't be reached. Images & facts come from         */
+/*  Wikipedia, so this list just needs names.                          */
+/* ------------------------------------------------------------------ */
+const DEMO_BIRDS = [
+  {common:"American Robin",        scientific:"Turdus migratorius"},
+  {common:"Northern Cardinal",     scientific:"Cardinalis cardinalis"},
+  {common:"Blue Jay",              scientific:"Cyanocitta cristata"},
+  {common:"Black-capped Chickadee",scientific:"Poecile atricapillus"},
+  {common:"American Goldfinch",    scientific:"Spinus tristis"},
+  {common:"Downy Woodpecker",      scientific:"Dryobates pubescens"},
+  {common:"White-breasted Nuthatch",scientific:"Sitta carolinensis"},
+  {common:"Mourning Dove",         scientific:"Zenaida macroura"},
+  {common:"Song Sparrow",          scientific:"Melospiza melodia"},
+  {common:"House Finch",           scientific:"Haemorhous mexicanus"}
+];
+
+/* ---- elements ---- */
+const $ = id => document.getElementById(id);
+const stage=$("stage"), quiet=$("quiet"), boot=$("boot");
+const dot=$("dot"), statusText=$("statusText");
+
+/* ---- state ---- */
+let pool=[];                 // high-confidence species heard today
+let priority=[];             // species to surface next (annual firsts / arrivals)
+let idx=0;                   // index into DEMO_BIRDS (demo mode only)
+let shownThisCycle=new Set();// species keys already shown in the current pass
+let lastShownTurn={};        // speciesKey -> turn number it last appeared on
+let turnCount=0;             // how many birds shown this session (the clock)
+let knownKeys=new Set();     // species seen in an earlier poll this session
+let promoted=new Set();      // species already given a "jump the queue" turn
+let firstLoad=true;
+let mode="demo";             // demo | live | live-empty
+let sourceMap={};            // speciesKey -> [audio source names heard today]
+let audioIdMap={};           // speciesKey -> most recent detection id (for audio)
+let currentBird=null;        // the bird currently on screen (for tap-to-play)
+const infoCache=new Map();
+let firstPaintDone=false;
+let nightBusy=false;         // guards the wake-from-blackout refresh
+let onDetail=false;          // true while page two (the detail page) is open
+let detailTimer=null;        // auto-return timer for page two
+const DETAIL_RETURN_SECONDS=75;  // page two returns to the glance after this
+
+const BASE = (CONFIG.BIRDNET_GO_URL||"").trim().replace(/\/+$/,"");
+$("brandName").textContent = CONFIG.STATION_NAME || "The Garden Register";
+
+/* masthead context line — configured text plus today's date, e.g.
+   "Birds heard here · 17 May 2026". Rebuilt daily so the date stays current. */
+function updateContextLine(){
+  const months=["January","February","March","April","May","June","July",
+                 "August","September","October","November","December"];
+  const d=new Date();
+  const dateStr=d.getDate()+" "+months[d.getMonth()]+" "+d.getFullYear();
+  const ctx=(CONFIG.CONTEXT_LINE||"").trim();
+  $("contextLine").textContent = ctx ? ctx+"  \u00b7  "+dateStr : dateStr;
+}
+updateContextLine();
+
+/* ===================== helpers ===================================== */
+function speciesKey(b){ return (b.scientific||b.common||"").toLowerCase().trim(); }
+function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function cap(s){ return s? s.charAt(0).toUpperCase()+s.slice(1):s; }
+function esc(s){ return String(s).replace(/[&<>"']/g,
+  c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+function todayStr(){                // local date as "2026-05-17"
+  const d=new Date();
+  const p=n=>String(n).padStart(2,"0");
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());
+}
+function fmtClock(t){               // "08:54:16"  ->  "8:54 AM"
+  if(!t) return "";
+  const m=String(t).match(/^(\d{1,2}):(\d{2})/);
+  if(!m) return "";
+  let h=+m[1]; const ap=h<12?"AM":"PM"; let hh=h%12; if(hh===0) hh=12;
+  return hh+":"+m[2]+" "+ap;
+}
+function fmtHour(i){                // 0..23  ->  "6 AM"
+  const ap=i<12?"AM":"PM"; let hh=i%12; if(hh===0) hh=12;
+  return hh+" "+ap;
+}
+/* "18:50:16" -> minutes since midnight, for recency sorting (-1 if absent) */
+function heardMinutes(t){
+  if(!t) return -1;
+  const m=String(t).match(/^(\d{1,2}):(\d{2})/);
+  return m ? (+m[1])*60+(+m[2]) : -1;
+}
+/* current local time as minutes since midnight */
+function nowMinutes(){
+  const d=new Date();
+  return d.getHours()*60+d.getMinutes();
+}
+
+/* parse "9:45pm", "9:45 PM" or "21:45" -> minutes since midnight, or null */
+function parseTime(s){
+  if(!s) return null;
+  const m=String(s).trim().toLowerCase().match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/);
+  if(!m) return null;
+  let h=+m[1]; const min=+m[2], ap=m[3];
+  if(ap==="pm" && h<12) h+=12;
+  if(ap==="am" && h===12) h=0;
+  if(h>23 || min>59) return null;
+  return h*60+min;
+}
+/* is the current local time inside the configured night blackout window? */
+function inBlackout(){
+  const s=parseTime(CONFIG.BLACKOUT_START), e=parseTime(CONFIG.BLACKOUT_END);
+  if(s==null || e==null || s===e) return false;     // disabled or invalid
+  const d=new Date(), now=d.getHours()*60+d.getMinutes();
+  return (s<e) ? (now>=s && now<e)                  // window within one day
+              : (now>=s || now<e);                  // window crosses midnight
+}
+
+/* ===================== data: BirdNET-Go daily analytics ============= */
+/* /api/v2/analytics/species/daily returns, per species heard today:
+   total count, an hourly breakdown, BirdNET-Go's own high/low-confidence
+   flag, first/latest heard times, and "new this year/season" flags.
+   This is the single source of truth — accurate and already today-scoped. */
+async function fetchLive(){
+  if(!BASE) return false;
+  const urls=[
+    BASE+"/api/v2/analytics/species/daily",
+    BASE+"/api/v2/analytics/species"
+  ];
+  for(const url of urls){
+    try{
+      const res=await fetch(url,{headers:{Accept:"application/json"}});
+      if(!res.ok) continue;
+      const json=await res.json();
+      const list=Array.isArray(json)?json:(json.data||json.species||json.results);
+      if(!Array.isArray(list)||!list.length) continue;
+      buildPool(list);
+      return true;
+    }catch(e){ /* try next candidate */ }
+  }
+  return false;
+}
+
+/* The daily-analytics endpoint aggregates across all audio sources, so it
+   can't tell us *where* a bird was heard. The raw detections endpoint can —
+   each record carries source.displayName. We pull a generous window of
+   recent detections, keep today's, and group each species' distinct
+   sources (busiest first). On a normal day this window covers the whole
+   day; on an exceptionally busy station the earliest detections could fall
+   outside it and a source could be missed. */
+async function fetchSources(){
+  if(!BASE) return;
+  try{
+    const res=await fetch(BASE+"/api/v2/detections?numResults=600",
+      {headers:{Accept:"application/json"}});
+    if(!res.ok) return;
+    const json=await res.json();
+    const list=Array.isArray(json)?json:(json.data||json.detections||json.results);
+    if(!Array.isArray(list)) return;
+    const today=todayStr();
+    const counts={};   // speciesKey -> { sourceName: count }
+    const audio={};    // speciesKey -> most recent detection id
+    for(const d of list){
+      if(d.date && d.date!==today) continue;
+      const sci=(d.scientificName||d.scientific_name||
+                 d.commonName||d.common_name||"").toLowerCase().trim();
+      if(!sci) continue;
+      // detections arrive newest-first, so the first id seen is the latest
+      if(audio[sci]==null && d.id!=null) audio[sci]=d.id;
+      let src=d.source;
+      if(src && typeof src==="object") src=src.displayName||src.name||src.id;
+      if(!src) continue;
+      (counts[sci]=counts[sci]||{})[src]=(counts[sci][src]||0)+1;
+    }
+    const map={};
+    for(const k in counts){
+      map[k]=Object.entries(counts[k])
+                   .sort((a,b)=>b[1]-a[1])    // busiest source first
+                   .map(e=>e[0]);
+    }
+    sourceMap=map;
+    audioIdMap=audio;
+  }catch(e){ /* leave sourceMap as-is on failure */ }
+}
+
+function parseSpecies(s){
+  const common=s.common_name||s.commonName;
+  if(!common) return null;
+  const scientific=s.scientific_name||s.scientificName||"";
+  return {
+    common:String(common).trim(),
+    scientific:String(scientific).trim(),
+    count:Number(s.count)||0,
+    hourly:Array.isArray(s.hourly_counts)?s.hourly_counts.map(n=>Number(n)||0):null,
+    highConf:s.high_confidence!==false,          // treat as high unless explicitly false
+    latest:s.latest_heard||s.latestHeard||"",
+    first:s.first_heard||s.firstHeard||"",
+    newYear:!!(s.is_new_this_year||s.isNewThisYear),
+    newSeason:!!(s.is_new_this_season||s.isNewThisSeason),
+    thumb:s.thumbnail_url||s.thumbnailUrl||null
+  };
+}
+
+/* Turn today's species list into the rotation pool. */
+function buildPool(rawList){
+  const all=rawList.map(parseSpecies).filter(Boolean);
+  // honour BirdNET-Go's own threshold: keep only high-confidence species
+  const species=all.filter(s=>s.highConf && s.count>0);
+  for(const s of species) s.key=speciesKey(s);
+  // note: no static sort here — the rotation picks each bird by a live
+  // recency+freshness blend at pick time (see chooseNext / scoreBird)
+
+  // decide what deserves to jump the queue — once per species per session
+  const jump=[];
+  for(const s of species){
+    const annualFirst = s.newYear||s.newSeason;
+    const justArrived = !firstLoad && !knownKeys.has(s.key);
+    if((annualFirst||justArrived) && !promoted.has(s.key)){
+      s._reason = annualFirst ? "annual" : "arrived";
+      promoted.add(s.key);
+      jump.push(s);
+    }
+  }
+  for(const s of species) knownKeys.add(s.key);
+  firstLoad=false;
+
+  pool=species;
+  for(const s of jump){ if(!priority.find(p=>p.key===s.key)) priority.push(s); }
+  mode = pool.length ? "live" : "live-empty";
+  // forget any shown-marks for birds no longer in the pool (keeps the set tidy)
+  const live=new Set(pool.map(b=>b.key));
+  for(const k of [...shownThisCycle]) if(!live.has(k)) shownThisCycle.delete(k);
+}
+
+/* ===================== data: Wikipedia (image + blurb) ============== */
+/* Wikipedia gives the high-resolution photo and a short description.
+   Generic descriptions like "species of bird" are suppressed.          */
+const GENERIC_DESC=/^(a |the )?(species|genus) of (bird|animal)s?$|^bird$|^species$/i;
+
+async function enrich(bird){
+  const k=speciesKey(bird);
+  if(infoCache.has(k)) return infoCache.get(k);
+  const titles=[bird.common,bird.scientific].filter(Boolean);
+  let info={imageUrl:null,blurb:"",tagline:"",rangeMapUrl:null};
+  for(const title of titles){
+    try{
+      const r=await fetch("https://en.wikipedia.org/api/rest_v1/page/summary/"+
+        encodeURIComponent(title)+"?redirect=true",{headers:{Accept:"application/json"}});
+      if(!r.ok) continue;
+      const j=await r.json();
+      if(j.type==="disambiguation") continue;
+      if(!info.imageUrl)
+        info.imageUrl=(j.originalimage&&j.originalimage.source)||
+                      (j.thumbnail&&j.thumbnail.source)||null;
+      if(j.extract&&!info.blurb) info.blurb=trimSentences(j.extract,2);
+      if(j.description&&!GENERIC_DESC.test(j.description.trim()))
+        info.tagline=cap(j.description.trim());
+      if(info.blurb) break;
+    }catch(e){ /* offline or blocked — skip quietly */ }
+  }
+  // fall back to BirdNET-Go's own portrait if Wikipedia had no photo
+  if(!info.imageUrl && bird.thumb && BASE)
+    info.imageUrl = bird.thumb.startsWith("http") ? bird.thumb : BASE+bird.thumb;
+  // look for a range / distribution map among the article's images
+  info.rangeMapUrl = await findRangeMap(titles);
+  infoCache.set(k,info);
+  return info;
+}
+
+/* Look for a range map on the bird's Wikipedia article. Bird taxoboxes use
+   a range_map image, and those files are reliably named with "distribution",
+   "range", or "map". We list the page's images, pick the best-matching
+   filename, and resolve it to an image URL. Returns null if none found. */
+const RANGE_HINT=/distribution|range[\s_-]*map|[\s_-]map[\s_-]|[\s_-]map\.[a-z]+$/i;
+const RANGE_SKIP=/\.(svg)$/i;   // many range SVGs render poorly scaled; prefer raster
+async function findRangeMap(titles){
+  for(const title of titles){
+    try{
+      const listUrl="https://en.wikipedia.org/w/api.php?action=query&format=json"+
+        "&origin=*&prop=images&imlimit=500&redirects=1&titles="+
+        encodeURIComponent(title);
+      const r=await fetch(listUrl);
+      if(!r.ok) continue;
+      const j=await r.json();
+      const pages=j&&j.query&&j.query.pages;
+      if(!pages) continue;
+      let files=[];
+      for(const id in pages)
+        if(pages[id].images) files=files.concat(pages[id].images.map(i=>i.title));
+      // candidate filenames that look like a range/distribution map
+      let cand=files.filter(f=>RANGE_HINT.test(f));
+      if(!cand.length) continue;
+      // prefer a raster (png/jpg) over svg; otherwise take the first
+      const pick=cand.find(f=>!RANGE_SKIP.test(f))||cand[0];
+      // resolve the File: title to an actual image URL
+      const infoUrl="https://en.wikipedia.org/w/api.php?action=query&format=json"+
+        "&origin=*&prop=imageinfo&iiprop=url&iiurlwidth=900&titles="+
+        encodeURIComponent(pick);
+      const r2=await fetch(infoUrl);
+      if(!r2.ok) continue;
+      const j2=await r2.json();
+      const p2=j2&&j2.query&&j2.query.pages;
+      for(const id in p2){
+        const ii=p2[id].imageinfo&&p2[id].imageinfo[0];
+        if(ii) return ii.thumburl||ii.url;
+      }
+    }catch(e){ /* offline or blocked — no map, that's fine */ }
+  }
+  return null;
+}
+function trimSentences(t,n){
+  const parts=t.replace(/\s+/g," ").match(/[^.!?]+[.!?]+/g);
+  if(!parts) return t.length>240?t.slice(0,237)+"\u2026":t;
+  let out=parts.slice(0,n).join(" ").trim();
+  if(out.length>300) out=out.slice(0,297)+"\u2026";
+  return out;
+}
+
+/* ===================== hourly activity sparkline ==================== */
+/* drawn as if sketched by hand: each bar is a four-point path with slightly
+   uneven edges and an irregular top, sitting on a wavering inked baseline. */
+function renderSpark(hourly){
+  const box=$("spark");
+  if(!hourly || !hourly.some(v=>v>0)){ box.style.display="none"; return false; }
+  box.style.display="block";
+  // a modest graph — a supporting note beside the count, not a centerpiece
+  const W=240,H=46,n=24,gap=2.4;
+  const bw=(W-gap*(n-1))/n;
+  const max=Math.max.apply(null,hourly);
+  const peak=hourly.indexOf(max);
+  // a small deterministic wobble so the sketch looks hand-done, not random each frame
+  const wob=(i,s)=>((Math.sin(i*12.9898+s*78.233)*43758.5453)%1+1)%1-0.5;
+
+  let bars="";
+  for(let i=0;i<n;i++){
+    if(hourly[i]<=0) continue;
+    const h=Math.max(3,(hourly[i]/max)*H);
+    const x=i*(bw+gap);
+    const cls="sbar"+(i===peak?" peak":"");
+    // four corners, each nudged slightly off-true
+    const lx=x+wob(i,1)*0.7,        rx=x+bw+wob(i,2)*0.7;
+    const ty1=H-h+wob(i,3)*1.6,     ty2=H-h+wob(i,4)*1.6;   // uneven top edge
+    const by=H+wob(i,5)*0.6;
+    bars+='<path class="'+cls+'" d="M'+lx.toFixed(1)+','+by.toFixed(1)+
+          ' L'+lx.toFixed(1)+','+ty1.toFixed(1)+
+          ' L'+rx.toFixed(1)+','+ty2.toFixed(1)+
+          ' L'+rx.toFixed(1)+','+by.toFixed(1)+' Z"/>';
+  }
+  // hand-inked baseline — a gently wavering stroke
+  const baseY=H+1;
+  let bp='M0,'+baseY.toFixed(1);
+  for(let s=1;s<=6;s++){
+    const px=(W/6)*s, py=baseY+wob(s,9)*1.3;
+    bp+=' L'+px.toFixed(1)+','+py.toFixed(1);
+  }
+  $("sparkSvg").innerHTML=
+    '<svg viewBox="0 0 '+W+' '+(H+15)+'">'+bars+
+    '<path class="sbase" d="'+bp+'"/>'+
+    '<text class="mark" x="0" y="'+(H+13)+'">12a</text>'+
+    '<text class="mark" x="'+(W/2)+'" y="'+(H+13)+'" text-anchor="middle">noon</text>'+
+    '<text class="mark" x="'+W+'" y="'+(H+13)+'" text-anchor="end">12a</text>'+
+    '</svg>';
+  return true;
+}
+
+/* ===================== rendering ==================================== */
+async function showBird(bird,opts={}){
+  const info=await enrich(bird);
+
+  // a new bird is coming — stop any clip still playing for the old one
+  try{ $("birdAudio").pause(); }catch(e){}
+
+  // preload the photo so the crossfade has no blank flash
+  await new Promise(res=>{
+    if(!info.imageUrl){ res(); return; }
+    const im=new Image();
+    im.onload=res; im.onerror=()=>{info.imageUrl=null;res();};
+    im.src=info.imageUrl;
+  });
+
+  stage.classList.remove("show");
+  await wait(firstPaintDone?720:0);
+
+  currentBird=bird;   // what's now on screen — tap the image to hear it
+
+  const img=$("birdImg"), noPhoto=$("noPhoto");
+  if(info.imageUrl){
+    img.src=info.imageUrl; img.style.opacity="1"; noPhoto.style.display="none";
+    img.style.animation="none"; void img.offsetWidth; img.style.animation="";
+  }else{
+    img.style.opacity="0"; noPhoto.style.display="flex";
+  }
+
+  $("commonName").textContent=bird.common;
+  $("sciName").textContent=bird.scientific||"";
+  $("tagline").textContent=info.tagline||"";
+  $("tagline").style.display=info.tagline?"block":"none";
+
+  // the description now lives on page two (the lean-in detail page) —
+  // populate it, and only offer "learn more" when there's something to read
+  const desc=info.blurb||"";
+  $("detailName").textContent=bird.common;
+  $("detailSci").textContent=bird.scientific||"";
+  $("detailDesc").textContent=desc||"A garden visitor logged by ear.";
+  if(info.imageUrl) $("detailImg").src=info.imageUrl;
+  $("toDetail").style.display = desc ? "flex" : "none";
+
+  // range map — show it if Wikipedia had one, hide the area cleanly if not
+  const mapFig=$("detailMap");
+  if(info.rangeMapUrl){
+    $("detailMapImg").src=info.rangeMapUrl;
+    mapFig.style.display="block";
+  }else{
+    $("detailMapImg").removeAttribute("src");
+    mapFig.style.display="none";
+  }
+
+  // notable bird -> show the typographic marker; otherwise the eyebrow line
+  const mark=$("mark"), eyebrowRow=$("eyebrowRow");
+  if(bird.newYear||bird.newSeason){
+    $("markSub").textContent = bird.newYear ? "record this year" : "record this season";
+    mark.style.display="block";
+    eyebrowRow.style.display="none";
+  }else{
+    mark.style.display="none";
+    eyebrowRow.style.display="flex";
+    // fresh vs earlier: a bird heard within FRESH_MINUTES is "calling now"
+    let eyebrow, fresh=false;
+    if(opts.reason==="arrived"){
+      eyebrow="Just arrived"; fresh=true;
+    }else if(bird.latest){
+      const ago = nowMinutes()-heardMinutes(bird.latest);
+      const within = ago>=0 && ago<=(CONFIG.FRESH_MINUTES||30);
+      if(within){ eyebrow="Calling now \u00b7 "+fmtClock(bird.latest); fresh=true; }
+      else      { eyebrow="Heard earlier \u00b7 "+fmtClock(bird.latest); }
+    }else{
+      eyebrow="From the field notes";
+    }
+    $("eyebrow").textContent=eyebrow;
+    eyebrowRow.classList.toggle("fresh", fresh);
+  }
+
+  // page one's "today" group: the count, the activity graph, and the
+  // places heard. The finer figures — most active, latest call — live on
+  // page two (the lean-in detail).
+  const today=$("today");
+  let countHtml="", detailStats=[];
+  if(mode==="demo"){
+    countHtml=DEMO_BIRDS.length+'<small> birds</small>';
+  }else{
+    if(bird.count>0) countHtml=bird.count+'<small>\u00d7</small>';
+    if(bird.hourly && bird.hourly.some(v=>v>0)){
+      const peak=bird.hourly.indexOf(Math.max.apply(null,bird.hourly));
+      const p=fmtHour(peak).split(" ");
+      detailStats.push({k:"Most active", v:p[0]+"<small> "+p[1]+"</small>"});
+    }
+    if(bird.latest) detailStats.push({k:"Latest call", v:fmtClock(bird.latest)});
+  }
+  $("todayCount").innerHTML=countHtml;
+  today.style.display = countHtml ? "flex" : "none";
+
+  // "heard at" — the places this species was picked up on today
+  const srcList=sourceMap[bird.key]||[];
+  if(srcList.length){
+    $("todayPlaceNames").textContent=srcList.join(", ");
+    $("todayPlaces").style.display="block";
+  }else{
+    $("todayPlaces").style.display="none";
+  }
+
+  $("detailStats").innerHTML=detailStats.map(s=>
+    '<div class="dstat"><div class="k">'+s.k+
+    '</div><div class="v">'+s.v+'</div></div>'
+  ).join("");
+  const drewGraph=renderSpark(bird.hourly);
+  $("graphLbl").style.visibility = drewGraph ? "visible" : "hidden";
+
+  void stage.offsetWidth;
+  stage.classList.add("show");
+
+  if(!firstPaintDone){ firstPaintDone=true; boot.classList.add("gone"); }
+}
+
+function setStatus(){
+  dot.className="dot";
+  if(mode==="live"){
+    dot.classList.add("live");
+    statusText.textContent="Live \u00b7 "+pool.length+" species today";
+  }else if(mode==="live-empty"){
+    dot.classList.add("live");
+    statusText.textContent="Live \u00b7 listening";
+  }else{
+    dot.classList.add("demo");
+    statusText.textContent=BASE?"Sample data \u00b7 offline":"Sample data";
+  }
+}
+
+/* ===================== the loop ===================================== */
+async function nextBird(){
+  if(inBlackout()) return;   // asleep — don't rotate or fetch behind the curtain
+  if(onDetail) return;       // someone's reading page two — don't change the bird
+  setStatus();
+
+  if(mode==="live-empty"){
+    stage.classList.remove("show");
+    await wait(firstPaintDone?700:0);
+    quiet.classList.add("on");
+    if(!firstPaintDone){ firstPaintDone=true; boot.classList.add("gone"); }
+    return;
+  }
+  quiet.classList.remove("on");
+
+  let bird, reason="";
+  if(priority.length){
+    bird=priority.shift();
+    reason=bird._reason||"arrived";
+  }else if(mode==="live" && pool.length){
+    bird=chooseNext();
+    shownThisCycle.add(bird.key);
+    lastShownTurn[bird.key]=turnCount;
+    turnCount++;
+  }else{
+    // demo mode — simple index walk through the sample birds
+    if(idx>=DEMO_BIRDS.length) idx=0;
+    bird=DEMO_BIRDS[idx]; idx++;
+    if(!bird.key) bird.key=speciesKey(bird);
+  }
+  await showBird(bird,{reason});
+}
+
+/* ---- rotation ordering -------------------------------------------------
+   Two goals pull against each other: showing what's calling *now*, and
+   making sure every species of the day gets seen. We balance them.
+
+   Coverage is guaranteed structurally: 'shownThisCycle' means every bird
+   appears once before any repeats. WITHIN a cycle, the order is decided by
+   a blended score — recency of the bird's last call, plus how long since
+   it was last on screen (so a quiet bird climbs while it waits).
+
+   ROTATION_BIAS is the dial: 1.0 = pure "what's calling now",
+   0.0 = pure "even variety". Lower it toward 0 if the wall feels too
+   repetitive; raise it toward 1 if it feels disconnected from the yard. */
+const ROTATION_BIAS = 0.7;   // leans toward what's calling now
+
+function scoreBird(b){
+  // recency: 0..1, where 1 = heard just now, 0 = heard at midnight
+  const recency = Math.max(0, heardMinutes(b.latest)) / (24*60);
+  // waiting: how many turns since this bird was last shown (capped)
+  const since = turnCount - (b.key in lastShownTurn ? lastShownTurn[b.key] : -20);
+  const waiting = Math.min(since, 20) / 20;      // 0..1
+  return ROTATION_BIAS*recency + (1-ROTATION_BIAS)*waiting;
+}
+
+function chooseNext(){
+  // candidates = birds not yet shown this cycle; if none, the cycle is done
+  let pend=pool.filter(b=>!shownThisCycle.has(b.key));
+  if(!pend.length){
+    shownThisCycle.clear();
+    // restart, but never immediately repeat the bird just shown
+    pend=pool.filter(b=>b.key!==(currentBird&&currentBird.key));
+    if(!pend.length) pend=pool.slice();          // single-bird pool
+  }
+  // highest blended score wins this turn
+  let best=pend[0], bestScore=scoreBird(best);
+  for(const b of pend){
+    const s=scoreBird(b);
+    if(s>bestScore){ best=b; bestScore=s; }
+  }
+  return best;
+}
+
+async function poll(){
+  if(!BASE) return;
+  const [ok]=await Promise.all([fetchLive(), fetchSources()]);
+  if(!ok && !firstPaintDone) mode="demo";
+  setStatus();
+}
+
+/* show/hide the night blackout; refresh the page on waking */
+async function nightCheck(){
+  const overlay=$("nightfall");
+  if(inBlackout()){
+    if(onDetail) showGlance();           // don't let night fall on page two
+    overlay.classList.add("on");
+    return;
+  }
+  if(overlay.classList.contains("on") && !nightBusy){
+    nightBusy=true;                    // morning — refresh behind the curtain
+    updateContextLine();               // roll the date over to the new day
+    await poll();
+    await nextBird();
+    overlay.classList.remove("on");
+    nightBusy=false;
+  }
+}
+
+async function start(){
+  if(BASE){
+    statusText.textContent="Connecting\u2026";
+    const [ok]=await Promise.all([fetchLive(), fetchSources()]);
+    if(!ok) mode="demo";
+  }else{
+    mode="demo";
+  }
+  await nextBird();
+  nightCheck();                        // black out immediately if it's night
+  setInterval(nextBird,   Math.max(20,CONFIG.ROTATE_SECONDS)*1000);
+  setInterval(poll,       Math.max(60,CONFIG.POLL_SECONDS)*1000);
+  setInterval(nightCheck, 30*1000);    // check the blackout schedule twice a minute
+}
+
+/* tap the image -> play this bird's actual recording from BirdNET-Go;
+   tap elsewhere -> advance to the next bird */
+function playCurrentAudio(){
+  const audio=$("birdAudio");
+  if(!audio.paused){ audio.pause(); return; }   // already playing -> stop
+  if(!currentBird || !BASE) return;
+  const id=audioIdMap[currentBird.key];
+  if(id==null) return;                          // no recording on file — stay silent
+  audio.src=BASE+"/api/v2/audio/"+id;
+  audio.currentTime=0;
+  audio.play().catch(()=>{});                   // ignore playback errors silently
+}
+$("frame").addEventListener("click",e=>{
+  e.stopPropagation();                          // don't also advance the bird
+  if(firstPaintDone && !inBlackout()) playCurrentAudio();
+});
+
+/* ---------- two-page turning -------------------------------------------
+   Page two is the lean-in detail page. While it's open the rotation
+   pauses (nextBird checks onDetail). If the reader walks away, the page
+   returns on its own after DETAIL_RETURN_SECONDS so the wall display
+   never freezes on one bird. */
+function showDetail(){
+  if(onDetail || inBlackout()) return;
+  onDetail=true;
+  $("pages").classList.add("show-detail");
+  try{ $("birdAudio").pause(); }catch(e){}   // stop any clip from page one
+  clearTimeout(detailTimer);
+  detailTimer=setTimeout(showGlance, DETAIL_RETURN_SECONDS*1000);
+}
+function showGlance(){
+  if(!onDetail) return;
+  onDetail=false;
+  clearTimeout(detailTimer);
+  $("pages").classList.remove("show-detail");
+}
+
+$("toDetail").addEventListener("click",e=>{ e.stopPropagation(); showDetail(); });
+$("toGlance").addEventListener("click",e=>{ e.stopPropagation(); showGlance(); });
+
+/* tap empty space to skip to the next bird — but only on the glance page,
+   and never when the tap was on a control */
+document.body.addEventListener("click",()=>{
+  if(firstPaintDone && !onDetail && !inBlackout()) nextBird();
+});
+
+start();
+</script>
+</body>
+</html>
