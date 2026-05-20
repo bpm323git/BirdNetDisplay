@@ -35,8 +35,7 @@ It's one self-contained HTML file. It just talks to your BirdNet-Go server's API
 ## Setup
 
 1. Drop `bird-dashboard.html` somewhere a browser can reach it (any static file host — I used HomeSeer's `html` folder; a Raspberry Pi running a web server works fine, or any device with a way to serve a file)
-2. Open the file in an editor and set `BIRDNET_GO_URL` near the top to your BirdNet<img width="1448" height="832" alt="Screenshot 2026-05-20 at 4 15 55 PM" src="https://github.com/user-attachments/assets/c273df33-0f11-4e9d-a59e-1659ec964e0e" />
--Go server's address, including the port (e.g. `"http://192.168.1.50:8080"`)
+2. Open the file in an editor and set `BIRDNET_GO_URL` near the top to your BirdNet-Go server's address, including the port (e.g. `"http://192.168.1.50:8080"`)
 3. Adjust the other values in the `CONFIG` block to taste — station name, the "Birds heard here" line, blackout hours, etc.
 4. Point a browser (or an iPad) at the file
 
